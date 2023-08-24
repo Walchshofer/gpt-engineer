@@ -67,9 +67,9 @@ class AI:
     def num_tokens(self, txt: Union[str, Message]) -> int:
         if isinstance(txt, Message):
             txt = txt.content
-        print("DEBUG: Type of tokenizer:", type(self.tokenizer))
-        print(f"DEBUG: Type of txt: {type(txt)}")
-        print(f"DEBUG: Value of txt: {txt}")
+        #print("DEBUG: Type of tokenizer:", type(self.tokenizer))
+        #print(f"DEBUG: Type of txt: {type(txt)}")
+        #print(f"DEBUG: Value of txt: {txt}")
         return len(self.tokenizer.encode(txt))
 
 
