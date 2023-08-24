@@ -1,5 +1,7 @@
-from __future__ import annotations
 
+from __future__ import annotations
+from dotenv import load_dotenv
+import os
 import json
 import logging
 
@@ -8,6 +10,7 @@ from typing import List, Optional, Union
 
 import openai
 import tiktoken
+from transformers import AutoTokenizer
 
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chat_models import ChatOpenAI
@@ -19,6 +22,10 @@ from langchain.schema import (
     messages_from_dict,
     messages_to_dict,
 )
+# Load environment variables and set up global variables
+load_dotenv()
+model_path = os.path.join(os.getenv('MODEL_PATH'), os.getenv('MODEL_NAME'))
+model_name = os.getenv('MODEL_NAME')
 
 Message = Union[AIMessage, HumanMessage, SystemMessage]
 
@@ -37,17 +44,40 @@ class TokenUsage:
 
 
 class AI:
-    def __init__(self, model_name="gpt-4", temperature=0.1):
+    def __init__(self, model_name=model_name, temperature=0.1):
         self.temperature = temperature
         self.model_name = fallback_model(model_name)
-        self.llm = create_chat_model(self.model_name, temperature)
-        self.tokenizer = get_tokenizer(self.model_name)
+        if self.model_name in ["gpt-4", "gpt-3.5-turbo"]:
+            self.llm = create_chat_model(self.model_name, temperature)
+            self.tokenizer = get_tokenizer(self.model_name)
+        else:
+            self.llm = create_chat_model(self.model_name, temperature)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
         # initialize token usage log
         self.cumulative_prompt_tokens = 0
         self.cumulative_completion_tokens = 0
         self.cumulative_total_tokens = 0
         self.token_usage_log = []
+
+    def extract_content_from_messages(self, messages: List[Message]) -> List[str]:
+        """Extracts content from a list of message objects."""
+        return [message.content for message in messages]
+
+    def num_tokens(self, txt: Union[str, Message]) -> int:
+        if isinstance(txt, Message):
+            txt = txt.content
+        print("DEBUG: Type of tokenizer:", type(self.tokenizer))
+        print(f"DEBUG: Type of txt: {type(txt)}")
+        print(f"DEBUG: Value of txt: {txt}")
+        return len(self.tokenizer.encode(txt))
+
+
+
+    def num_tokens_from_messages(self, messages: List[Message]) -> int:
+        """Returns the number of tokens used by a list of messages."""
+        contents = self.extract_content_from_messages(messages)
+        return sum(self.num_tokens(content) for content in contents)
 
     def start(self, system: str, user: str, step_name: str) -> List[Message]:
         messages: List[Message] = [
@@ -138,20 +168,7 @@ class AI:
             result += str(log.total_tokens) + "\n"
         return result
 
-    def num_tokens(self, txt: str) -> int:
-        return len(self.tokenizer.encode(txt))
-
-    def num_tokens_from_messages(self, messages: List[Message]) -> int:
-        """Returns the number of tokens used by a list of messages."""
-        n_tokens = 0
-        for message in messages:
-            n_tokens += (
-                4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            )
-            n_tokens += self.num_tokens(message.content)
-        n_tokens += 2  # every reply is primed with <im_start>assistant
-        return n_tokens
-
+ 
 
 def fallback_model(model: str) -> str:
     try:
@@ -167,10 +184,11 @@ def fallback_model(model: str) -> str:
 
 
 def create_chat_model(model: str, temperature) -> BaseChatModel:
-    if model == "gpt-4":
+    if model == model_name:
         return ChatOpenAI(
-            model="gpt-4",
+            model=model_name,
             temperature=temperature,
+            max_tokens=4096,
             streaming=True,
             client=openai.ChatCompletion,
         )
@@ -185,16 +203,15 @@ def create_chat_model(model: str, temperature) -> BaseChatModel:
         raise ValueError(f"Model {model} is not supported.")
 
 
+
+
 def get_tokenizer(model: str):
     if "gpt-4" in model or "gpt-3.5" in model:
         return tiktoken.encoding_for_model(model)
+    else:
+        model_path = os.path.join(os.getenv('MODEL_PATH'), os.getenv('MODEL_NAME'))
+        return AutoTokenizer.from_pretrained(model_path)
 
-    logger.debug(
-        f"No encoder implemented for model {model}."
-        "Defaulting to tiktoken cl100k_base encoder."
-        "Use results only as estimates."
-    )
-    return tiktoken.get_encoding("cl100k_base")
 
 
 def serialize_messages(messages: List[Message]) -> str:

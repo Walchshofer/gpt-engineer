@@ -16,17 +16,16 @@ from gpt_engineer.steps import STEPS, Config as StepsConfig
 
 app = typer.Typer()  # creates a CLI app
 
-
 def load_env_if_needed():
-    if os.getenv("OPENAI_API_KEY") is None:
+    if os.getenv("OPENAI_API_KEY") is None or os.getenv("MODEL") is None:
         load_dotenv()
     openai.api_key = os.getenv("OPENAI_API_KEY")
-
+    return os.getenv("MODEL_NAME")
 
 @app.command()
 def main(
     project_path: str = typer.Argument("projects/example", help="path"),
-    model: str = typer.Argument("gpt-4", help="model id string"),
+    model: str = typer.Argument(None, help="model id string"),  # Default to None
     temperature: float = 0.1,
     steps_config: StepsConfig = typer.Option(
         StepsConfig.DEFAULT, "--steps", "-s", help="decide which steps to run"
@@ -35,20 +34,13 @@ def main(
         False,
         "--improve",
         "-i",
-        help="Improve code from existing project.",
+        help="Improve code from existing project."
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    verbose: bool = typer.Option(False, "--verbose", "-v")
 ):
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
 
-    # For the improve option take current project as path and add .gpteng folder
-    # By now, ignoring the 'project_path' argument
-    if improve_option:
-        # The default option for the --improve is the IMPROVE_CODE, not DEFAULT
-        if steps_config == StepsConfig.DEFAULT:
-            steps_config = StepsConfig.IMPROVE_CODE
-
-    load_env_if_needed()
+    model = model or load_env_if_needed()
 
     ai = AI(
         model_name=model,
@@ -67,7 +59,7 @@ def main(
         workspace=DB(workspace_path),
         preprompts=DB(
             Path(__file__).parent / "preprompts"
-        ),  # Loads preprompts from the preprompts directory
+        ),
         archive=DB(archive_path),
     )
 
@@ -87,7 +79,6 @@ def main(
         collect_learnings(model, temperature, steps, dbs)
 
     dbs.logs["token_usage"] = ai.format_token_usage_log()
-
 
 if __name__ == "__main__":
     app()
